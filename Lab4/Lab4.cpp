@@ -3,8 +3,8 @@
 #include <stdio.h>
 
 
-#define ROW 1000
-#define COL 1000
+#define ROW 10
+#define COL 10
 
 double mA[ROW][COL];
 double mB[ROW][COL];
@@ -49,7 +49,7 @@ int main(int argc, char* argv[])
     int rank, size;
     int numCalculate;// Кол-во вычислений на один процесс
     int lowBound, upBound;
-
+    int i;
     MPI_Status status;
     MPI_Request request;
 
@@ -59,7 +59,8 @@ int main(int argc, char* argv[])
 
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
-
+    
+    
     if (rank == 0)
     {
         MakeMatrix(mA, 1);
@@ -69,56 +70,59 @@ int main(int argc, char* argv[])
 
         numCalculate = ROW / (size - 1);
 
-        for (int i = 0; i < size; i++)
+        printf("OK");
+        lowBound = 0;
+        for (i = 1; i < size; i++)
         {
             lowBound = (i - 1) * numCalculate;
 
             if (((i + 1) == size) && ((ROW % (size - 1)) != 0))
-            {// Строки не делятся поровну
-                upBound = ROW; //last slave gets all the remaining rows
+            {
+                upBound = ROW;
             }
             else
-            {// Строки делятся поровну
+            {
                 upBound = lowBound + numCalculate;
             }
 
-            MPI_Isend(&lowBound, 1, MPI_INT, i, 1, MPI_COMM_WORLD, &request);
-            MPI_Isend(&upBound, 1, MPI_INT, i, 2, MPI_COMM_WORLD, &request);
-            MPI_Isend(&mA[lowBound][0], (upBound - lowBound) * COL, MPI_DOUBLE, i, 3, MPI_COMM_WORLD, &request);
-
+            MPI_Send(&lowBound, 1, MPI_INT, i, 1, MPI_COMM_WORLD);
+            MPI_Send(&upBound, 1, MPI_INT, i, 1, MPI_COMM_WORLD);
+            MPI_Send(&mA[lowBound][0], (upBound-lowBound) * COL, MPI_DOUBLE, i, 1, MPI_COMM_WORLD);
+            MPI_Send(&mB, ROW * COL, MPI_INT, i, 1, MPI_COMM_WORLD);
         }
     }
-    MPI_Bcast(&mB, ROW * COL, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     if (rank > 0)
     {
         
         MPI_Recv(&lowBound, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
-        MPI_Recv(&upBound, 1, MPI_INT, 0, 2, MPI_COMM_WORLD, &status);
-        MPI_Recv(&mA[lowBound][0], (upBound - lowBound) * COL, MPI_DOUBLE, 0, 3, MPI_COMM_WORLD, &status);
+        MPI_Recv(&upBound, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
+        MPI_Recv(&mA[lowBound][0], (upBound - lowBound) * COL, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, &status);
+        MPI_Recv(&mB, ROW * COL, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, &status);
         printf("rank: %d \tsize: %d - [%d;%d]", rank, size, lowBound, upBound);
-        for (int i = lowBound; i < upBound; i++) {//iterate through a given set of rows of [A]
-            for (int j = 0; j < COL; j++) {//columns of [B]
-                for (int k = 0; k < ROW; k++) {//rows of [B]
+        for (i = lowBound; i < upBound; i++) {//iterate through a given set of rows of [A]
+            for (int k = 0; k < ROW; k++) {//rows of [B]
+                for (int j = 0; j < COL; j++) {//columns of [B]
                     mR[i][j] += (mA[i][k] * mB[k][j]);
                 }
             }
         }
-        MPI_Isend(&lowBound, 1, MPI_INT, 0, 4, MPI_COMM_WORLD, &request);
-        MPI_Isend(&upBound, 1, MPI_INT, 0, 5, MPI_COMM_WORLD, &request);
-        MPI_Isend(&mR[lowBound][0], (upBound - lowBound) * COL, MPI_DOUBLE, 0, 6, MPI_COMM_WORLD, &request);
+        MPI_Send(&lowBound, 1, MPI_INT, 0, 2, MPI_COMM_WORLD);
+        MPI_Send(&upBound, 1, MPI_INT, 0, 2, MPI_COMM_WORLD);
+        MPI_Send(&mR[lowBound][0], (upBound - lowBound) * COL, MPI_DOUBLE, 0, 2, MPI_COMM_WORLD);
 
     }
+    MPI_Barrier(MPI_COMM_WORLD);
     if (rank == 0) 
     {
-        for (int i = 1; i < size; i++)
+        for (i = 1; i < size; i++)
         {
-            MPI_Recv(&lowBound, 1, MPI_INT, i, 4, MPI_COMM_WORLD, &status);
-            MPI_Recv(&upBound, 1, MPI_INT, i, 5, MPI_COMM_WORLD, &status);
-            MPI_Recv(&mR[lowBound][0], (upBound - lowBound) * COL, MPI_DOUBLE, i, 6, MPI_COMM_WORLD, &status);
+            MPI_Recv(&lowBound, 1, MPI_INT, i, 2, MPI_COMM_WORLD, &status);
+            MPI_Recv(&upBound, 1, MPI_INT, i, 2, MPI_COMM_WORLD, &status);
+            MPI_Recv(&mR[lowBound][0], (upBound - lowBound) * COL, MPI_DOUBLE, i, 2, MPI_COMM_WORLD, &status);
         }
         endTime = MPI_Wtime() - startTime;
         printf("\nTime Parallel = %f\n\n", endTime);
-        //printArray();
+        printArray();
     }
     
     MPI_Finalize();
